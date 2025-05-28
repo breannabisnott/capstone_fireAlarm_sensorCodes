@@ -6,7 +6,7 @@
 #include <OneWire.h>
 #include <DallasTemperature.h>
 #include <DHT.h>
-#include "DFRobot_EOxygenSensor.h"
+#include "DFRobot_OxygenSensor.h"
 
 //receiver mac address
 uint8_t broadcastAddress[] = {0x88, 0x13, 0xBF, 0x24, 0xFA, 0xAC};
@@ -17,15 +17,16 @@ uint8_t broadcastAddress[] = {0x88, 0x13, 0xBF, 0x24, 0xFA, 0xAC};
 #define gasPin 13  //digital gas status
 #define tempPin 33 // temperature pin
 #define DHT22_PIN  19 // ESP32 pin GPIO21 connected to DHT22 sensor
-#define OXYGEN_I2C_ADDRESS E_OXYGEN_ADDRESS_3
+#define Oxygen_IICAddress ADDRESS_3
 #define COLLECT_NUMBER  10             // collect number, the collection range is 1-100.
-#define SENSOR_ADDRESS 0x73
+DFRobot_OxygenSensor oxygen;           // collect number, the collection range is 1-100.
+//#define SENSOR_ADDRESS 0x73
 bool fire_status;
 
 OneWire oneWire(tempPin);
 DallasTemperature sensors(&oneWire);
 DHT dht22(DHT22_PIN, DHT22);
-DFRobot_EOxygenSensor_I2C oxygen(&Wire, OXYGEN_I2C_ADDRESS);
+
 uint8_t calibrationState = 0;
 
 typedef struct sensor_data {
@@ -54,6 +55,12 @@ void setup() {
   pinMode(gasPin, INPUT); // Configure D8 pin as a digital input pin
   pinMode(gasConcentrationPin, INPUT);
   Serial.begin(9600);
+  
+  while(!oxygen.begin(Oxygen_IICAddress)){
+    Serial.println("I2c device number error !");
+    delay(1000);
+  }
+  Serial.println("I2c connect success !");
   Wire.begin();
   
   sensors.begin();
@@ -95,22 +102,24 @@ void setup() {
 void loop(){
   int sensorValue = analogRead(gasConcentrationPin);
   int threshold= digitalRead(gasPin);
-  sensorData.threshold = threshold;
-  sensorData.sensorValue =  sensorValue;
+  sensorData.threshold = threshold;     //digital gas reading
+  sensorData.sensorValue =  sensorValue;    //analog gas reading
 
   sensors.requestTemperatures(); 
   float temperature = sensors.getTempCByIndex(0);
-  
-  //Serial.print("Temperature: ");
- // Serial.print(temperature);
-  //Serial.println("ºC");
 
+  sensorData.humidity  = dht22.readHumidity();    //humidity
+  sensorData.temperature = dht22.readTemperature();   //temperature
 
-  // read humidity
-  sensorData.humidity  = dht22.readHumidity();
-  
-  // read temperature in Celsius
-  sensorData.temperature = dht22.readTemperature();
+  sensorData.oxygen_level = oxygen.getOxygenData(COLLECT_NUMBER);
+
+  //sensorData.fire_status = digitalRead(flamePin);   //flame digital reading
+  //sensorData.fire_level = analogRead(flameLevelPin);    //flame analog reading
+
+  //sensorData.oxygen_level = oxygen.readOxygenConcentration();   //oxygen reading
+
+  //send data via ESP-NOW
+  //esp_err_t result = esp_now_send(broadcastAddress, (uint8_t *) &sensorData, sizeof(sensorData)); 
 
   // read temperature in Fahrenheit
   float tempF = dht22.readTemperature(true);
@@ -159,19 +168,12 @@ void loop(){
   Serial.print(sensorData.sensorValue);
   Serial.println(" ppm");
   
-  //sensorData.oxygen_level = oxygen.readOxygenConcentration();
-  sensorData.oxygen_level = 20;
   Serial.print("O2 Concentration : ");
   Serial.print(sensorData.oxygen_level);
   Serial.println("%");
-/////////////////////////////////////////////////////
-  
-/////////////////////////////////////////////////////
 
 
-/*Serial.print("oxygen concetnration is "); 
-Serial.print(oxygen.readOxygenConcentration());
-Serial.println("% VOL");*/
+
   // Send message via ESP-NOW
   esp_err_t result = esp_now_send(broadcastAddress, (uint8_t *) &sensorData, sizeof(sensorData));
    
@@ -185,49 +187,3 @@ Serial.println("% VOL");*/
   Serial.println("----------------------------------------");
   delay(2000);
 } 
-
-
-/*
-void setup() {
-  Serial.begin(9600);
-  while (!Serial);
-  Serial.println("I2C Scanner");
-  Wire.begin();
-}
-
-void loop() {
-  Serial.println("Scanning...");
-
-  for (byte address = 1; address < 127; address++) {
-      Wire.beginTransmission(address);
-      if (Wire.endTransmission() == 0) {
-          Serial.print("Device found at 0x");
-          Serial.println(address, HEX);
-      }
-  }
-  Serial.println("Scan complete.");
-  delay(5000);
-}*/
-
-/*#include "DFRobot_EOxygenSensor.h"
-
-#define OXYGEN_I2C_ADDRESS E_OXYGEN_ADDRESS_3
-DFRobot_EOxygenSensor_I2C oxygen(&Wire, OXYGEN_I2C_ADDRESS);
-
-void setup()
-{
-  Serial.begin(9600);
-  while(!Serial);
-  while(!oxygen.begin()){
-    Serial.println("NO Deivces !");
-    delay(1000);
-  } Serial.println("Device connected successfully !");
-}
-
-void loop() 
-{
-  Serial.print("oxygen concetnration is "); 
-  Serial.print(oxygen.readOxygenConcentration());
-  Serial.println("% VOL");
-  delay(1000);
-}*/
