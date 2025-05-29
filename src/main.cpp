@@ -21,6 +21,12 @@ uint8_t broadcastAddress[] = {0x88, 0x13, 0xBF, 0x24, 0xFA, 0xAC};
 #define COLLECT_NUMBER  10             // collect number, the collection range is 1-100.
 DFRobot_OxygenSensor oxygen;           // collect number, the collection range is 1-100.
 //#define SENSOR_ADDRESS 0x73
+
+#define uS_TO_S_FACTOR 1000000  // Conversion factor for microseconds to seconds
+#define SLEEP_SECONDS 60        // Deep sleep duration (e.g., 10 seconds)
+
+void read_sensor_data();
+
 bool fire_status;
 
 OneWire oneWire(tempPin);
@@ -97,9 +103,22 @@ void setup() {
     Serial.println("Failed to add peer");
     return;
   }
+
+  read_sensor_data();
+
+  sleep:
+  Serial.flush();  // Ensure all serial data is sent
+  delay(100);      // Small delay to ensure completion
+  
+  // Proper deep sleep initiation
+  esp_deep_sleep(SLEEP_SECONDS * uS_TO_S_FACTOR);
+  
+  // This next line should never be reached
+  Serial.println("Failed to enter deep sleep!");
+  
 }
 
-void loop(){
+void read_sensor_data(){
   int sensorValue = analogRead(gasConcentrationPin);
   int threshold= digitalRead(gasPin);
   sensorData.threshold = threshold;     //digital gas reading
@@ -112,34 +131,11 @@ void loop(){
   sensorData.temperature = dht22.readTemperature();   //temperature
 
   sensorData.oxygen_level = oxygen.getOxygenData(COLLECT_NUMBER);
-
-  //sensorData.fire_status = digitalRead(flamePin);   //flame digital reading
-  //sensorData.fire_level = analogRead(flameLevelPin);    //flame analog reading
-
-  //sensorData.oxygen_level = oxygen.readOxygenConcentration();   //oxygen reading
-
-  //send data via ESP-NOW
-  //esp_err_t result = esp_now_send(broadcastAddress, (uint8_t *) &sensorData, sizeof(sensorData)); 
+  sensorData.fire_status = digitalRead(flamePin);
+  sensorData.fire_level = analogRead(flameLevelPin);
 
   // read temperature in Fahrenheit
   float tempF = dht22.readTemperature(true);
-
-  // check whether the reading is successful or not
-  if ( isnan(sensorData.humidity) || isnan(tempF) || isnan(sensorData.temperature)) {
-    Serial.println("Failed to read from DHT22 sensor!");
-  } else {
-    // Serial.print("Humidity: ");
-    // Serial.print(humi);
-    // Serial.print("%");
-
-    // Serial.print("  |  ");
-
-    // Serial.print("Temperature: ");
-    // Serial.print(tempC);
-    // Serial.print("°C  ~  ");
-    // Serial.print(tempF);
-    // Serial.println("°F");
-  }
 
   strcpy(sensorData.device_id, "AC:15:18:D7:B0:80"); 
   Serial.print("Device ID: ");
@@ -153,11 +149,11 @@ void loop(){
   Serial.print(sensorData.humidity);
   Serial.println("%");
   
-  sensorData.fire_status = digitalRead(flamePin);
+  
   Serial.print("Flame Detection : ");
   Serial.print(sensorData.fire_status);
   Serial.print(", ");
-  sensorData.fire_level = analogRead(flameLevelPin);
+  
   Serial.print("Flame Distance : ");
   Serial.println(sensorData.fire_level);
 
@@ -177,13 +173,16 @@ void loop(){
   // Send message via ESP-NOW
   esp_err_t result = esp_now_send(broadcastAddress, (uint8_t *) &sensorData, sizeof(sensorData));
    
-  // if (result == ESP_OK) {
-  //   Serial.println("Sent with success");
-  // }
-  // else {
-  //   Serial.println("Error sending the data");
-  // }
+  if (result == ESP_OK) {
+    Serial.println("Data sent with success to CMS");
+  }
+  else {
+    Serial.println("Error sending the data");
+  }
 
   Serial.println("----------------------------------------");
-  delay(2000);
+}
+
+void loop(){
+  
 } 
